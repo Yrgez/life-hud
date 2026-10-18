@@ -99,13 +99,20 @@ jobs:
           with open(manifest_path, 'r', encoding='utf-8') as f:
               content = f.read()
 
+          # Эти блоки идут ПЕРЕД <application> (прямо внутри <manifest>)
           perms = """
               <uses-permission android:name="android.permission.health.READ_STEPS"/>
               <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
               <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED"/>
               <uses-permission android:name="android.permission.health.READ_NUTRITION"/>
               <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
+
+              <queries>
+                  <package android:name="com.google.android.apps.healthdata"/>
+              </queries>
           """
+
+          # Этот блок идёт ВНУТРИ <application>
           alias = """
                   <activity-alias android:name="ViewPermissionUsageActivity"
                       android:exported="true"
@@ -116,10 +123,6 @@ jobs:
                       <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
                     </intent-filter>
                   </activity-alias>
-
-                  <queries>
-                      <package android:name="com.google.android.apps.healthdata"/>
-                  </queries>
           """
           content = content.replace('<application', perms + '\n    <application', 1)
           content = content.replace('</application>', alias + '\n    </application>', 1)
