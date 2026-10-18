@@ -2,7 +2,7 @@
 // Адаптер: тренировки (из GymMane-БД или CSV) -> MuscleStimulus.
 // ExerciseCatalog — временная замена; подключите маппинг упражнение->мышцы из GymMane.
 import 'package:csv/csv.dart';
-import '../domain/recovery_model.dart';
+import 'recovery_model.dart';
 
 class WorkoutSet {
   const WorkoutSet({required this.at, required this.exercise, required this.weightKg, required this.reps});
