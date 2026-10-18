@@ -136,6 +136,18 @@ jobs:
       - name: Generate Drift Database code
         run: dart run build_runner build --delete-conflicting-outputs
 
+      - name: Force compileSdk 36 for all Android modules
+        run: |
+          mkdir -p ~/.gradle/init.d
+          cat << 'EOF' > ~/.gradle/init.d/compilesdk.gradle
+          allprojects {
+              afterEvaluate { p ->
+                  if (p.hasProperty('android')) {
+                      p.android.compileSdkVersion 36
+                  }
+              }
+          }
+          EOF
       - name: Build Android APK
         run: flutter build apk --release
 
