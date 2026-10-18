@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'body_view.dart';
 import 'grit_vault.dart';
 import 'gym_bridge.dart';
 import 'health_service.dart';
@@ -55,8 +56,6 @@ class LifeHudScreen extends ConsumerStatefulWidget {
 }
 
 class _LifeHudScreenState extends ConsumerState<LifeHudScreen> with WidgetsBindingObserver {
-  bool _back = false;
-
   @override
   void initState() {
     super.initState();
@@ -84,25 +83,15 @@ class _LifeHudScreenState extends ConsumerState<LifeHudScreen> with WidgetsBindi
       body: SafeArea(
         child: Column(children: [
           const BiometricsBar(),
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: SegmentedButton<bool>(
-              segments: const [
-                ButtonSegment(value: false, label: Text('Спереди')),
-                ButtonSegment(value: true, label: Text('Сзади')),
-              ],
-              selected: {_back},
-              onSelectionChanged: (s) => setState(() => _back = s.first),
-            ),
-          ),
           Expanded(
             child: muscles.when(
-              data: (m) => BodyMap(states: m, back: _back, onTap: (s) => _showMuscle(context, s)),
+              data: (m) => BodyView(states: m, onTap: (s) => _showMuscle(context, s)),
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(child: Text('Ошибка: $e')),
             ),
           ),
           const GoalsStrip(),
+          const SizedBox(height: 72),
         ]),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -246,110 +235,4 @@ class GoalsStrip extends ConsumerWidget {
             ),
     );
   }
-}
-
-// ───────────── Body map ─────────────
-/// Плейсхолдер на CustomPainter. Замените _front/_back на SVG-пути из GymMane
-/// (flutter_svg / path_drawing: parseSvgPathData -> Path, fill по id мышцы).
-const _front = <MuscleGroup, List<Rect>>{
-  MuscleGroup.shoulders: [Rect.fromLTWH(.20, .17, .13, .07), Rect.fromLTWH(.67, .17, .13, .07)],
-  MuscleGroup.chest: [Rect.fromLTWH(.34, .18, .32, .09)],
-  MuscleGroup.biceps: [Rect.fromLTWH(.16, .26, .08, .12), Rect.fromLTWH(.76, .26, .08, .12)],
-  MuscleGroup.forearms: [Rect.fromLTWH(.12, .39, .08, .13), Rect.fromLTWH(.80, .39, .08, .13)],
-  MuscleGroup.abs: [Rect.fromLTWH(.40, .28, .20, .17)],
-  MuscleGroup.obliques: [Rect.fromLTWH(.33, .30, .06, .14), Rect.fromLTWH(.61, .30, .06, .14)],
-  MuscleGroup.quads: [Rect.fromLTWH(.30, .50, .17, .22), Rect.fromLTWH(.53, .50, .17, .22)],
-  MuscleGroup.calves: [Rect.fromLTWH(.31, .76, .13, .18), Rect.fromLTWH(.56, .76, .13, .18)],
-};
-const _backR = <MuscleGroup, List<Rect>>{
-  MuscleGroup.traps: [Rect.fromLTWH(.38, .15, .24, .08)],
-  MuscleGroup.shoulders: [Rect.fromLTWH(.20, .17, .13, .07), Rect.fromLTWH(.67, .17, .13, .07)],
-  MuscleGroup.upperBack: [Rect.fromLTWH(.36, .24, .28, .08)],
-  MuscleGroup.lats: [Rect.fromLTWH(.30, .32, .14, .12), Rect.fromLTWH(.56, .32, .14, .12)],
-  MuscleGroup.triceps: [Rect.fromLTWH(.16, .26, .08, .12), Rect.fromLTWH(.76, .26, .08, .12)],
-  MuscleGroup.lowerBack: [Rect.fromLTWH(.40, .45, .20, .07)],
-  MuscleGroup.glutes: [Rect.fromLTWH(.32, .52, .36, .09)],
-  MuscleGroup.hamstrings: [Rect.fromLTWH(.30, .62, .17, .16), Rect.fromLTWH(.53, .62, .17, .16)],
-  MuscleGroup.calves: [Rect.fromLTWH(.31, .80, .13, .15), Rect.fromLTWH(.56, .80, .13, .15)],
-};
-
-Color muscleColor(MuscleState s) {
-  switch (s.phase) {
-    case RecoveryPhase.supercompensated:
-      return Color.lerp(Colors.cyan.shade300, Colors.cyanAccent, s.supercompBoost)!;
-    case RecoveryPhase.untrained:
-    case RecoveryPhase.detrained:
-      return Colors.blueGrey.shade600;
-    default:
-      final r = s.recovery.clamp(0.0, 1.0);
-      return r < .5
-          ? Color.lerp(Colors.redAccent, Colors.amber, r / .5)!
-          : Color.lerp(Colors.amber, Colors.greenAccent.shade400, (r - .5) / .5)!;
-  }
-}
-
-class BodyMap extends StatelessWidget {
-  const BodyMap({super.key, required this.states, required this.back, required this.onTap});
-  final Map<MuscleGroup, MuscleState> states;
-  final bool back;
-  final void Function(MuscleState) onTap;
-
-  Map<MuscleGroup, List<Rect>> get _regions => back ? _backR : _front;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: AspectRatio(
-        aspectRatio: 0.5,
-        child: LayoutBuilder(builder: (_, c) {
-          return GestureDetector(
-            onTapUp: (d) {
-              final p = Offset(d.localPosition.dx / c.maxWidth, d.localPosition.dy / c.maxHeight);
-              for (final e in _regions.entries) {
-                if (e.value.any((r) => r.inflate(.01).contains(p))) {
-                  onTap(states[e.key]!);
-                  return;
-                }
-              }
-            },
-            child: CustomPaint(size: Size(c.maxWidth, c.maxHeight), painter: _BodyPainter(states, _regions)),
-          );
-        }),
-      ),
-    );
-  }
-}
-
-class _BodyPainter extends CustomPainter {
-  _BodyPainter(this.states, this.regions);
-  final Map<MuscleGroup, MuscleState> states;
-  final Map<MuscleGroup, List<Rect>> regions;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final outline = Paint()..color = Colors.white24..style = PaintingStyle.stroke..strokeWidth = 2;
-    canvas.drawCircle(Offset(size.width * .5, size.height * .08), size.width * .08, outline);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(size.width * .2, size.height * .15, size.width * .6, size.height * .82),
-        const Radius.circular(24),
-      ),
-      outline,
-    );
-    for (final e in regions.entries) {
-      final fill = Paint()..color = muscleColor(states[e.key]!);
-      for (final r in e.value) {
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            Rect.fromLTWH(r.left * size.width, r.top * size.height, r.width * size.width, r.height * size.height),
-            const Radius.circular(10),
-          ),
-          fill,
-        );
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_BodyPainter old) => old.states != states || old.regions != regions;
 }
