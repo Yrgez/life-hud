@@ -84,9 +84,23 @@ class HealthConnectService {
   Future<DailyBiometrics> _readToday() async {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day);
+    // Samsung Health пишет ОДНУ запись на сутки (00:00–23:59), поэтому
+    // окно запроса должно доходить до конца дня, а не до "сейчас".
+    final end = start.add(const Duration(days: 1));
 
-    // Шаги: агрегат Health Connect — сам дедуплицирует источники.
-    final steps = await _health.getTotalStepsInInterval(start, now) ?? 0;
+    var steps = 0;
+    final stepPoints = _health.removeDuplicates(await _health.getHealthDataFromTypes(
+      types: const [HealthDataType.STEPS],
+      startTime: start,
+      endTime: end,
+    ));
+    for (final p in stepPoints) {
+      final v = p.value;
+      if (v is NumericHealthValue) steps += v.numericValue.toInt();
+    }
+    if (steps == 0) {
+      steps = await _health.getTotalStepsInInterval(start, end) ?? 0;
+    }
 
     final raw = await _health.getHealthDataFromTypes(
       types: const [
@@ -95,7 +109,7 @@ class HealthConnectService {
         HealthDataType.NUTRITION,
       ],
       startTime: start,
-      endTime: now,
+      endTime: end,
     );
     final points = _health.removeDuplicates(raw);
 
