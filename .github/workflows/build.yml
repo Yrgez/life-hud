@@ -1,0 +1,143 @@
+name: Build Life HUD APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold Flutter & Android Project
+        run: |
+          # 1. Создаем Android-каркас
+          flutter create --org com.lifehud --project-name life_hud temp_app
+          cp -r temp_app/android .
+          rm -rf temp_app
+
+          # 2. Перемещаем код в папку lib/
+          mkdir -p lib
+          mv *.dart lib/ 2>/dev/null || true
+
+          # 3. Создаем pubspec.yaml со всеми зависимостями
+          cat << 'EOF' > pubspec.yaml
+          name: life_hud
+          description: "Life HUD App"
+          publish_to: "none"
+          version: 1.0.0+1
+
+          environment:
+            sdk: ">=3.3.0 <4.0.0"
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            flutter_riverpod: ^2.5.1
+            health: ^12.0.0
+            drift: ^2.20.0
+            drift_flutter: ^0.2.0
+            csv: ^6.0.0
+            flutter_svg: ^2.0.10
+            path_drawing: ^1.0.1
+            permission_handler: ^11.3.0
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: ^3.0.0
+            drift_dev: ^2.20.0
+            build_runner: ^2.4.0
+
+          flutter:
+            uses-material-design: true
+          EOF
+
+          # 4. Настраиваем MainActivity под FlutterFragmentActivity (нужно для Health)
+          python3 - << 'PYEOF'
+          import glob
+          for fpath in glob.glob('android/app/src/main/kotlin/**/MainActivity.kt', recursive=True):
+              with open(fpath, 'r', encoding='utf-8') as f:
+                  txt = f.read()
+              txt = txt.replace('FlutterActivity', 'FlutterFragmentActivity')
+              txt = txt.replace('import io.flutter.embedding.android.FlutterActivity', 'import io.flutter.embedding.android.FlutterFragmentActivity')
+              with open(fpath, 'w', encoding='utf-8') as f:
+                  f.write(txt)
+          PYEOF
+
+          # 5. Устанавливаем minSdkVersion 26
+          python3 - << 'PYEOF'
+          import glob, re
+          for fpath in glob.glob('android/app/build.gradle*'):
+              with open(fpath, 'r', encoding='utf-8') as f:
+                  txt = f.read()
+              txt = re.sub(r'minSdk\s*=\s*flutter\.minSdkVersion', 'minSdk = 26', txt)
+              txt = re.sub(r'minSdkVersion\s+flutter\.minSdkVersion', 'minSdkVersion 26', txt)
+              txt = re.sub(r'minSdkVersion\s*=\s*[0-9]+', 'minSdkVersion = 26', txt)
+              txt = re.sub(r'minSdk\s*=\s*[0-9]+', 'minSdk = 26', txt)
+              with open(fpath, 'w', encoding='utf-8') as f:
+                  f.write(txt)
+          PYEOF
+
+          # 6. Добавляем разрешения Health Connect в AndroidManifest.xml
+          python3 - << 'PYEOF'
+          manifest_path = 'android/app/src/main/AndroidManifest.xml'
+          with open(manifest_path, 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          perms = """
+              <uses-permission android:name="android.permission.health.READ_STEPS"/>
+              <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
+              <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED"/>
+              <uses-permission android:name="android.permission.health.READ_NUTRITION"/>
+              <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
+          """
+          alias = """
+                  <activity-alias android:name="ViewPermissionUsageActivity"
+                      android:exported="true"
+                      android:targetActivity=".MainActivity"
+                      android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+                    <intent-filter>
+                      <action android:name="android.intent.action.VIEW_PERMISSION_USAGE"/>
+                      <category android:name="android.intent.category.HEALTH_PERMISSIONS"/>
+                    </intent-filter>
+                  </activity-alias>
+
+                  <queries>
+                      <package android:name="com.google.android.apps.healthdata"/>
+                  </queries>
+          """
+          content = content.replace('<application', perms + '\n    <application', 1)
+          content = content.replace('</application>', alias + '\n    </application>', 1)
+          with open(manifest_path, 'w', encoding='utf-8') as f:
+              f.write(content)
+          PYEOF
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate Drift Database code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: life-hud-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
