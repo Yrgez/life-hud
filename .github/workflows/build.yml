@@ -126,6 +126,9 @@ jobs:
           """
           content = content.replace('<application', perms + '\n    <application', 1)
           content = content.replace('</application>', alias + '\n    </application>', 1)
+          import re
+          rationale = '<intent-filter><action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"/></intent-filter>'
+          content = re.sub(r'(android.intent.category.LAUNCHER"\s*/>\s*</intent-filter>)', r'\1\n' + rationale, content, count=1)
           with open(manifest_path, 'w', encoding='utf-8') as f:
               f.write(content)
           PYEOF
